@@ -1,0 +1,116 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="源文件">
+      <UniqueIdentifier>{4FC737F1-C7A5-4376-A066-2A32D752A2FF}</UniqueIdentifier>
+      <Extensions>cpp;c;cc;cxx;c++;cppm;ixx;def;odl;idl;hpj;bat;asm;asmx</Extensions>
+    </Filter>
+    <Filter Include="头文件">
+      <UniqueIdentifier>{93995380-89BD-4b04-88EB-625FBE52EBFB}</UniqueIdentifier>
+      <Extensions>h;hh;hpp;hxx;h++;hm;inl;inc;ipp;xsd</Extensions>
+    </Filter>
+    <Filter Include="资源文件">
+      <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
+      <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
+    </Filter>
+    <Filter Include="头文件\core">
+      <UniqueIdentifier>{b3c796d0-1158-4880-8ded-636963c6132e}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="源文件\core">
+      <UniqueIdentifier>{c5667d93-e0ec-4179-b642-a58c1c3cde63}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="头文件\helper">
+      <UniqueIdentifier>{4c8d42f8-4ce2-4d3e-9e33-b79dff533e1b}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="源文件\helper">
+      <UniqueIdentifier>{42ae44b5-1ec8-4d97-ba12-772b7acf105c}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="shader">
+      <UniqueIdentifier>{73a73249-21b4-4621-8679-b9ec43264069}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="Main.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="core\DXSample.cpp">
+      <Filter>源文件\core</Filter>
+    </ClCompile>
+    <ClCompile Include="core\Win32Application.cpp">
+      <Filter>源文件\core</Filter>
+    </ClCompile>
+    <ClCompile Include="stdafx.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="HelloRayTracing.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="helper\BottomLevelASGenerator.cpp">
+      <Filter>源文件\helper</Filter>
+    </ClCompile>
+    <ClCompile Include="helper\manipulator.cpp">
+      <Filter>源文件\helper</Filter>
+    </ClCompile>
+    <ClCompile Include="helper\RaytracingPipelineGenerator.cpp">
+      <Filter>源文件\helper</Filter>
+    </ClCompile>
+    <ClCompile Include="helper\RootSignatureGenerator.cpp">
+      <Filter>源文件\helper</Filter>
+    </ClCompile>
+    <ClCompile Include="helper\ShaderBindingTableGenerator.cpp">
+      <Filter>源文件\helper</Filter>
+    </ClCompile>
+    <ClCompile Include="helper\TopLevelASGenerator.cpp">
+      <Filter>源文件\helper</Filter>
+    </ClCompile>
+    <ClCompile Include="D3DUtility.cpp">
+      <Filter>源文件\core</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="stdafx.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="core\d3dx12.h">
+      <Filter>头文件\core</Filter>
+    </ClInclude>
+    <ClInclude Include="core\DXSample.h">
+      <Filter>头文件\core</Filter>
+    </ClInclude>
+    <ClInclude Include="core\Win32Application.h">
+      <Filter>头文件\core</Filter>
+    </ClInclude>
+    <ClInclude Include="helper\DXSampleHelper.h">
+      <Filter>头文件\helper</Filter>
+    </ClInclude>
+    <ClInclude Include="HelloRayTracing.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="helper\BottomLevelASGenerator.h">
+      <Filter>头文件\helper</Filter>
+    </ClInclude>
+    <ClInclude Include="helper\manipulator.h">
+      <Filter>头文件\helper</Filter>
+    </ClInclude>
+    <ClInclude Include="helper\RaytracingPipelineGenerator.h">
+      <Filter>头文件\helper</Filter>
+    </ClInclude>
+    <ClInclude Include="helper\RootSignatureGenerator.h">
+      <Filter>头文件\helper</Filter>
+    </ClInclude>
+    <ClInclude Include="helper\ShaderBindingTableGenerator.h">
+      <Filter>头文件\helper</Filter>
+    </ClInclude>
+    <ClInclude Include="helper\TopLevelASGenerator.h">
+      <Filter>头文件\helper</Filter>
+    </ClInclude>
+    <ClInclude Include="D3DUtility.h">
+      <Filter>头文件\core</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <CustomBuild Include="shaders\shaders.hlsl">
+      <Filter>shader</Filter>
+    </CustomBuild>
+  </ItemGroup>
+</Project>
