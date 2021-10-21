@@ -153,15 +153,16 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="core\D3DUtility.cpp" />
     <ClCompile Include="core\DXSample.cpp" />
     <ClCompile Include="core\Win32Application.cpp" />
-    <ClCompile Include="D3DUtility.cpp" />
     <ClCompile Include="HelloRayTracing.cpp" />
     <ClCompile Include="helper\BottomLevelASGenerator.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">NotUsing</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">NotUsing</PrecompiledHeader>
     </ClCompile>
     <ClCompile Include="helper\manipulator.cpp" />
+    <ClCompile Include="helper\ModelLoader.cpp" />
     <ClCompile Include="helper\RaytracingPipelineGenerator.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">NotUsing</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">NotUsing</PrecompiledHeader>
@@ -174,10 +175,12 @@
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">NotUsing</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">NotUsing</PrecompiledHeader>
     </ClCompile>
+    <ClCompile Include="helper\TextureLoader.cpp" />
     <ClCompile Include="helper\TopLevelASGenerator.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">NotUsing</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">NotUsing</PrecompiledHeader>
     </ClCompile>
+    <ClCompile Include="helper\WICTextureLoader12.cpp" />
     <ClCompile Include="Main.cpp" />
     <ClCompile Include="stdafx.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Create</PrecompiledHeader>
@@ -187,18 +190,21 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="core\D3DUtility.h" />
     <ClInclude Include="core\d3dx12.h" />
     <ClInclude Include="core\DXSample.h" />
     <ClInclude Include="core\Win32Application.h" />
-    <ClInclude Include="D3DUtility.h" />
     <ClInclude Include="HelloRayTracing.h" />
     <ClInclude Include="helper\BottomLevelASGenerator.h" />
     <ClInclude Include="helper\DXSampleHelper.h" />
     <ClInclude Include="helper\manipulator.h" />
+    <ClInclude Include="helper\ModelLoader.h" />
     <ClInclude Include="helper\RaytracingPipelineGenerator.h" />
     <ClInclude Include="helper\RootSignatureGenerator.h" />
     <ClInclude Include="helper\ShaderBindingTableGenerator.h" />
+    <ClInclude Include="helper\TextureLoader.h" />
     <ClInclude Include="helper\TopLevelASGenerator.h" />
+    <ClInclude Include="helper\WICTextureLoader12.h" />
     <ClInclude Include="stdafx.h" />
   </ItemGroup>
   <ItemGroup>

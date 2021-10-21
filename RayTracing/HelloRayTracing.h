@@ -2,10 +2,9 @@
 #include "core/DXSample.h"
 #include <dxcapi.h>
 #include <vector>
-#include "D3DUtility.h"
-
+#include "core/D3DUtility.h"
+#include "helper/TextureLoader.h"
 using Microsoft::WRL::ComPtr;
-
 
 class HelloRayTracing : public DXSample
 {
@@ -19,7 +18,8 @@ public:
 
 	virtual void OnButtonDown(UINT32 lParam);
 	virtual void OnMouseMove(UINT8 wParam, UINT32 lParam);
-	virtual void OnKeyUp(UINT8 key) {};
+	virtual void OnKeyDown(UINT8) {}
+	virtual void OnKeyUp(UINT8) {}
 
 private:
 	//common base
@@ -29,9 +29,11 @@ private:
 	ComPtr<IDXGISwapChain3>				m_swapChain;
 	ComPtr<ID3D12Device5>				m_device;
 	ComPtr<ID3D12Resource>				m_renderTargets[FrameCount];
+
 	ComPtr<ID3D12CommandAllocator>		m_commandAllocator;
 	ComPtr<ID3D12CommandQueue>			m_commandQueue;
 	ComPtr<ID3D12GraphicsCommandList4>	m_commandList;
+
 	ComPtr<ID3D12DescriptorHeap>		m_rtvHeap;
 	ComPtr<ID3D12DescriptorHeap>		m_dsvHeap;
 	ComPtr<ID3D12Resource>				m_depthStencil;
@@ -41,15 +43,18 @@ private:
 	UINT m_cbvSrvUavDescriptorSize;
 
 	void Initialize();
+	void CreateDescriptorHeap();
 	void LoadAssets();
 	void WaitForPreviousFrame();
 
 	std::unordered_map<std::string, std::unique_ptr<Mesh>> m_meshes;
+	Model m_sceneModel;
 
 	//raster Pipeline objects.
 	ComPtr<ID3D12RootSignature> m_rasterRootSignature;
 	ComPtr<ID3D12PipelineState> m_rasterPiplineState;
 	void LoadRasterPipeline();
+	ComPtr<ID3D12Resource>		m_rasterObjectCB;
 
 	// Synchronization objects.
 	UINT				m_frameIndex;
@@ -64,6 +69,9 @@ private:
 	void CreateCameraBuffer();
 	void UpdateCameraBuffer();
 
+	//texture 
+	TextureLoader m_textloader;
+	ComPtr<ID3D12DescriptorHeap>	m_srvTexHeap;
 
 	//
 	bool m_raster = true;
@@ -71,5 +79,7 @@ private:
 	//DXR Pipeline objects
 
 
+
+	std::array<CD3DX12_STATIC_SAMPLER_DESC, 6> GetStaticSamplers();
 };
 

@@ -22,13 +22,29 @@
 #include <dxcapi.h>
 #include <d3dcompiler.h>
 
+
 using Microsoft::WRL::ComPtr;
+
+class HrException : public std::runtime_error
+{
+	inline std::string HrToString(HRESULT hr)
+	{
+		char s_str[64] = {};
+		sprintf_s(s_str, "HRESULT of 0x%08X", static_cast<UINT>(hr));
+		return std::string(s_str);
+	}
+public:
+	HrException(HRESULT hr) : std::runtime_error(HrToString(hr)), m_hr(hr) {}
+	HRESULT Error() const { return m_hr; }
+private:
+	const HRESULT m_hr;
+};
 
 inline void ThrowIfFailed(HRESULT hr)
 {
 	if (FAILED(hr))
 	{
-		throw std::exception();
+		throw HrException(hr);
 	}
 }
 
@@ -266,56 +282,4 @@ namespace helper {
 
 		return defaultBuffer.Get();
 	}
-
-	inline ComPtr<ID3D12Resource> CreateDefaultBuffer2(
-		ID3D12Device* device,
-		ID3D12GraphicsCommandList* cmdList,
-		const void* initData,
-		UINT64 byteSize,
-		Microsoft::WRL::ComPtr<ID3D12Resource>& uploadBuffer)
-	{
-		ComPtr<ID3D12Resource> defaultBuffer;
-
-		// Create the actual default buffer resource.
-		CD3DX12_HEAP_PROPERTIES hpDefault(D3D12_HEAP_TYPE_DEFAULT);
-		CD3DX12_RESOURCE_DESC descDefault = CD3DX12_RESOURCE_DESC::Buffer(byteSize);
-		ThrowIfFailed(device->CreateCommittedResource(
-			&hpDefault,
-			D3D12_HEAP_FLAG_NONE,
-			&descDefault,
-			D3D12_RESOURCE_STATE_COMMON,
-			nullptr,
-			IID_PPV_ARGS(defaultBuffer.GetAddressOf())));
-
-		// In order to copy CPU memory data into our default buffer, we need to create
-		// an intermediate upload heap. 
-		CD3DX12_HEAP_PROPERTIES hpUpload(D3D12_HEAP_TYPE_UPLOAD);
-		CD3DX12_RESOURCE_DESC descUpload = CD3DX12_RESOURCE_DESC::Buffer(byteSize);
-		ThrowIfFailed(device->CreateCommittedResource(
-			&hpUpload,
-			D3D12_HEAP_FLAG_NONE,
-			&descUpload,
-			D3D12_RESOURCE_STATE_GENERIC_READ,
-			nullptr,
-			IID_PPV_ARGS(uploadBuffer.GetAddressOf())));
-
-
-		// Describe the data we want to copy into the default buffer.
-		D3D12_SUBRESOURCE_DATA subResourceData = {};
-		subResourceData.pData = initData;
-		subResourceData.RowPitch = byteSize;
-		subResourceData.SlicePitch = subResourceData.RowPitch;
-
-		CD3DX12_RESOURCE_BARRIER commonToCopy = CD3DX12_RESOURCE_BARRIER::Transition(defaultBuffer.Get(),
-			D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_COPY_DEST);
-		cmdList->ResourceBarrier(1, &commonToCopy);
-		UpdateSubresources<1>(cmdList, defaultBuffer.Get(), uploadBuffer.Get(), 0, 0, 1, &subResourceData);
-
-		CD3DX12_RESOURCE_BARRIER copyToRead = CD3DX12_RESOURCE_BARRIER::Transition(defaultBuffer.Get(),
-			D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_GENERIC_READ);
-		cmdList->ResourceBarrier(1, &copyToRead);
-		return defaultBuffer;
-	}
-
-
 }

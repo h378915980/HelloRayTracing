@@ -32,6 +32,7 @@
 
 #include <string>
 #include <vector>
+#include <array>
 #include <wrl.h>
 #include <shellapi.h>
 #include <unordered_map>

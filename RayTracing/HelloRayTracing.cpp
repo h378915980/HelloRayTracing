@@ -6,9 +6,13 @@
 #include "helper/RootSignatureGenerator.h"
 #include "glm/gtc/type_ptr.hpp"
 #include "helper/manipulator.h"
+#include "helper/ModelLoader.h"
 #include <windowsx.h>
 #include <DirectXMath.h>
 #include <d3dcompiler.h>
+#include <iostream>
+#include "helper/TextureLoader.h"
+#include "core/D3DUtility.h"
 
 using namespace DirectX;
 
@@ -25,8 +29,10 @@ void HelloRayTracing::OnInit()
     nv_helpers_dx12::CameraManip.setLookat(glm::vec3(1.5f, 1.5f, 1.5f), glm::vec3(0, 0, 0), glm::vec3(0, 1, 0));
 
     Initialize();
-    LoadRasterPipeline();
+    CreateDescriptorHeap();
     LoadAssets();
+
+    LoadRasterPipeline();
     CreateCameraBuffer();
 
     ThrowIfFailed(m_commandList->Close());
@@ -69,15 +75,38 @@ void HelloRayTracing::OnRender()
         m_commandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
         m_commandList->ClearDepthStencilView(dsvHandle, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
 
-        std::vector< ID3D12DescriptorHeap* > heaps = { m_constHeap.Get() };
+        std::vector< ID3D12DescriptorHeap* > heaps = { m_constHeap.Get()};
         m_commandList->SetDescriptorHeaps(static_cast<UINT>(heaps.size()), heaps.data());
         m_commandList->SetGraphicsRootDescriptorTable(0, m_constHeap->GetGPUDescriptorHandleForHeapStart());
 
-        D3D12_VERTEX_BUFFER_VIEW vertexBufferView = m_meshes["tet"]->VertexBufferView();
-        m_commandList->IASetVertexBuffers(0, 1,&vertexBufferView);
-        D3D12_INDEX_BUFFER_VIEW indexBufferView = m_meshes["tet"]->IndexBufferView();
-        m_commandList->IASetIndexBuffer(&indexBufferView);
-        m_commandList->DrawIndexedInstanced(m_meshes["tet"]->IndexCount, 1, 0, 0, 0);
+        m_commandList->SetGraphicsRootConstantBufferView(1, m_rasterObjectCB->GetGPUVirtualAddress());
+
+        std::vector< ID3D12DescriptorHeap* > heaps2 = { m_srvTexHeap.Get() };
+        m_commandList->SetDescriptorHeaps(static_cast<UINT>(heaps2.size()), heaps2.data());
+
+
+        //D3D12_VERTEX_BUFFER_VIEW vertexBufferView = m_meshes["tet"]->VertexBufferView();
+        //m_commandList->IASetVertexBuffers(0, 1,&vertexBufferView);
+        //D3D12_INDEX_BUFFER_VIEW indexBufferView = m_meshes["tet"]->IndexBufferView();
+        //m_commandList->IASetIndexBuffer(&indexBufferView);
+        //m_commandList->DrawIndexedInstanced(m_meshes["tet"]->IndexCount, 1, 0, 0, 0);
+
+
+        for (auto& mesh : m_sceneModel.Meshes) {
+            if (!mesh.second.empty()) {
+                CD3DX12_GPU_DESCRIPTOR_HANDLE srvTexHandle = CD3DX12_GPU_DESCRIPTOR_HANDLE(m_srvTexHeap->GetGPUDescriptorHandleForHeapStart());
+                srvTexHandle.Offset(m_sceneModel.Textures[mesh.second[0]]->SrvHeapIndex, m_cbvSrvUavDescriptorSize);
+                m_commandList->SetGraphicsRootDescriptorTable(2, srvTexHandle);
+            }
+
+            D3D12_VERTEX_BUFFER_VIEW vertexBufferView = mesh.first->VertexBufferView();
+            m_commandList->IASetVertexBuffers(0, 1,&vertexBufferView);
+            D3D12_INDEX_BUFFER_VIEW indexBufferView = mesh.first->IndexBufferView();
+            m_commandList->IASetIndexBuffer(&indexBufferView);
+            m_commandList->DrawIndexedInstanced(mesh.first->IndexCount, 1, 0, 0, 0);
+        }
+
+
     }
     else { //DXR continue
 
@@ -128,8 +157,8 @@ void HelloRayTracing::OnMouseMove(UINT8 wParam, UINT32 lParam)
     inputs.alt = GetAsyncKeyState(VK_MENU);
 
     CameraManip.mouseMove(-GET_X_LPARAM(lParam), -GET_Y_LPARAM(lParam), inputs);
+   
 }
-
 
 void HelloRayTracing::Initialize()
 {
@@ -250,36 +279,47 @@ void HelloRayTracing::Initialize()
     }
 }
 
+void HelloRayTracing::CreateDescriptorHeap()
+{
+    m_constHeap = helper::CreateDescriptorHeap(m_device.Get(), 1, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, true);
+
+}
+
 void HelloRayTracing::LoadAssets()
 {
     {
         std::unique_ptr<Mesh> tetrahedron = std::make_unique<Mesh>();
         tetrahedron->Name = "tetrahedron";
 
-        Vertex_Simple triangleVertices[] = {
-            {{std::sqrtf(8.f / 9.f), 0.f, -1.f / 3.f}, {1.f, 0.f, 0.f, 1.f}},
-            {{-std::sqrtf(2.f / 9.f), std::sqrtf(2.f / 3.f), -1.f / 3.f}, {0.f, 1.f, 0.f, 1.f}},
-            {{-std::sqrtf(2.f / 9.f), -std::sqrtf(2.f / 3.f), -1.f / 3.f}, {0.f, 0.f, 1.f, 1.f}},
-            {{0.f, 0.f, 1.f}, {1, 0, 1, 1}}
+        Vertex_Model triangleVertices[] = {
+            {{std::sqrtf(8.f / 9.f), 0.f, -1.f / 3.f}, {1.f, 0.f, 0.f},{0.0,0.0}},
+            {{-std::sqrtf(2.f / 9.f), std::sqrtf(2.f / 3.f), -1.f / 3.f}, {1.f, 0.f, 0.f},{1.0,0.0}},
+            {{-std::sqrtf(2.f / 9.f), -std::sqrtf(2.f / 3.f), -1.f / 3.f}, {1.f, 0.f, 0.f},{0.0,1.0}},
+            {{0.f, 0.f, 1.f}, {1.f, 0.f, 0.f},{1.0,1.0}}
         };
         const UINT vertexBufferSize = sizeof(triangleVertices);
         tetrahedron->VertexBufferByteSize = vertexBufferSize;
-        tetrahedron->VertexByteStride = sizeof(Vertex_Simple);
+        tetrahedron->VertexByteStride = sizeof(Vertex_Model);
         tetrahedron->VertexCount = 4.;
         tetrahedron->VertexBufferGPU = helper::CreateDefaultBuffer(m_device.Get(), m_commandList.Get(),triangleVertices, vertexBufferSize,tetrahedron->VertexBufferUploader);
-        ThrowIfFailed(D3DCreateBlob(vertexBufferSize, &tetrahedron->VertexBufferCPU));
-        CopyMemory(tetrahedron->VertexBufferCPU->GetBufferPointer(), triangleVertices, vertexBufferSize);
 
-        std::vector<UINT16> indices = { 0, 1, 2, 0, 3, 1, 0, 2, 3, 1, 3, 2 };
-        const UINT indexBufferSize = static_cast<UINT>(indices.size()) * sizeof(UINT16);
+        std::vector<UINT32> indices = { 0, 1, 2, 0, 3, 1, 0, 2, 3, 1, 3, 2 };
+        const UINT indexBufferSize = static_cast<UINT>(indices.size()) * sizeof(UINT32);
         tetrahedron->IndexBufferByteSize = indexBufferSize;
         tetrahedron->IndexCount = indices.size();
         tetrahedron->IndexBufferGPU = helper::CreateDefaultBuffer(m_device.Get(), m_commandList.Get(), indices.data(), indexBufferSize,tetrahedron->IndexBufferUploader);
-        ThrowIfFailed(D3DCreateBlob(indexBufferSize, &tetrahedron->IndexBufferCPU));
-        CopyMemory(tetrahedron->IndexBufferCPU->GetBufferPointer(), indices.data(), indexBufferSize);
 
         m_meshes["tet"] = std::move(tetrahedron);
     }
+
+    m_textloader.Initialize(m_device.Get(), m_commandList.Get());
+
+    {
+        ModelLoader modelLoader(m_device.Get(),m_commandList.Get(), &m_textloader);
+        modelLoader.Load("Resource/Model/sponza/sponza.obj", m_sceneModel);           
+    }
+
+    m_srvTexHeap = m_textloader.GenerateHeap();
 }
 
 void HelloRayTracing::WaitForPreviousFrame()
@@ -302,12 +342,20 @@ void HelloRayTracing::LoadRasterPipeline()
 {
     // Create an empty root signature.
     {
-        CD3DX12_ROOT_PARAMETER constantParameter;
+        CD3DX12_ROOT_PARAMETER rootParameter[3];
         CD3DX12_DESCRIPTOR_RANGE range;
         range.Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 0);
-        constantParameter.InitAsDescriptorTable(1, &range, D3D12_SHADER_VISIBILITY_ALL);
+        rootParameter[0].InitAsDescriptorTable(1, &range, D3D12_SHADER_VISIBILITY_ALL);
+
+        rootParameter[1].InitAsConstantBufferView(1);
+
+        CD3DX12_DESCRIPTOR_RANGE srvTable;
+        srvTable.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);
+        rootParameter[2].InitAsDescriptorTable(1, &srvTable, D3D12_SHADER_VISIBILITY_PIXEL);
+
+        auto staticSamplers = GetStaticSamplers();
         CD3DX12_ROOT_SIGNATURE_DESC rootSignatureDesc;
-        rootSignatureDesc.Init(1, &constantParameter, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+        rootSignatureDesc.Init(3, rootParameter, (UINT)staticSamplers.size(), staticSamplers.data(), D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
 
         ComPtr<ID3DBlob> signature;
         ComPtr<ID3DBlob> error;
@@ -338,11 +386,17 @@ void HelloRayTracing::LoadRasterPipeline()
             compileFlags, 0, &pixelShader, nullptr));
 
         // Define the vertex input layout.
+        //D3D12_INPUT_ELEMENT_DESC inputElementDescs[] = {
+        //    {"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0,
+        //     D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
+        //    {"COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 12,
+        //     D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0} };
+
         D3D12_INPUT_ELEMENT_DESC inputElementDescs[] = {
-            {"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0,
-             D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
-            {"COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 12,
-             D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0} };
+            {"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0,D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
+            {"NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 12,D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
+            {"TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 24,D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0}
+        };
 
         // Describe and create the graphics pipeline state object (PSO).
         D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
@@ -351,6 +405,7 @@ void HelloRayTracing::LoadRasterPipeline()
         psoDesc.VS = CD3DX12_SHADER_BYTECODE(vertexShader.Get());
         psoDesc.PS = CD3DX12_SHADER_BYTECODE(pixelShader.Get());
         psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
+        psoDesc.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
         psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
         psoDesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
         psoDesc.DSVFormat = DXGI_FORMAT_D32_FLOAT;
@@ -372,8 +427,6 @@ void HelloRayTracing::CreateCameraBuffer()
     m_cameraBuffer = helper::CreateBuffer(m_device.Get(), m_cameraBufferSize, D3D12_RESOURCE_FLAG_NONE,
         D3D12_RESOURCE_STATE_GENERIC_READ, helper::kUploadHeapProps);
 
-    m_constHeap = helper::CreateDescriptorHeap(m_device.Get(), 1, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, true);
-
     // Describe and create the constant buffer view.
     D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc = {};
     cbvDesc.BufferLocation = m_cameraBuffer->GetGPUVirtualAddress();
@@ -381,8 +434,16 @@ void HelloRayTracing::CreateCameraBuffer()
 
     // Get a handle to the heap memory on the CPU side, to be able to write the
     // descriptors directly
-    D3D12_CPU_DESCRIPTOR_HANDLE srvHandle =m_constHeap->GetCPUDescriptorHandleForHeapStart();
-    m_device->CreateConstantBufferView(&cbvDesc, srvHandle);
+    D3D12_CPU_DESCRIPTOR_HANDLE cbvHandle =m_constHeap->GetCPUDescriptorHandleForHeapStart();
+    m_device->CreateConstantBufferView(&cbvDesc, cbvHandle);
+
+    //--------------------------------------------------
+    XMMATRIX world = DirectX::XMMatrixScaling(0.1, 0.1, 0.1);
+    m_rasterObjectCB = helper::CreateBuffer(m_device.Get(), sizeof(XMMATRIX), D3D12_RESOURCE_FLAG_NONE,
+        D3D12_RESOURCE_STATE_GENERIC_READ, helper::kUploadHeapProps);
+    helper::CopyDataToUploadBuffer(m_rasterObjectCB.Get(), &world, sizeof(XMMATRIX));
+    
+
 }
 
 void HelloRayTracing::UpdateCameraBuffer()
@@ -393,7 +454,7 @@ void HelloRayTracing::UpdateCameraBuffer()
     memcpy(&matrices[0].r->m128_f32[0], glm::value_ptr(mat), 16 * sizeof(float));
 
     float fovAngleY = 45.0f * XM_PI / 180.0f;
-    matrices[1] = DirectX::XMMatrixPerspectiveFovRH(fovAngleY, m_aspectRatio, 0.1f, 1000.0f);
+    matrices[1] = DirectX::XMMatrixPerspectiveFovRH(fovAngleY, m_aspectRatio, 0.1f, 10000.0f);
 
     XMVECTOR det;
     matrices[2] = DirectX::XMMatrixInverse(&det, matrices[0]);
@@ -401,6 +462,53 @@ void HelloRayTracing::UpdateCameraBuffer()
 
     // Copy the matrix contents
     helper::CopyDataToUploadBuffer(m_cameraBuffer.Get(), matrices.data(), m_cameraBufferSize);
+
+
 }
 
+std::array<CD3DX12_STATIC_SAMPLER_DESC, 6> HelloRayTracing::GetStaticSamplers()
+{
+    //过滤器POINT,寻址模式WRAP的静态采样器
+    CD3DX12_STATIC_SAMPLER_DESC pointWarp(0,	//着色器寄存器
+        D3D12_FILTER_MIN_MAG_MIP_POINT,		//过滤器类型为POINT(常量插值)
+        D3D12_TEXTURE_ADDRESS_MODE_WRAP,	//U方向上的寻址模式为WRAP（重复寻址模式）
+        D3D12_TEXTURE_ADDRESS_MODE_WRAP,	//V方向上的寻址模式为WRAP（重复寻址模式）
+        D3D12_TEXTURE_ADDRESS_MODE_WRAP);	//W方向上的寻址模式为WRAP（重复寻址模式）
 
+    //过滤器POINT,寻址模式CLAMP的静态采样器
+    CD3DX12_STATIC_SAMPLER_DESC pointClamp(1,	//着色器寄存器
+        D3D12_FILTER_MIN_MAG_MIP_POINT,		//过滤器类型为POINT(常量插值)
+        D3D12_TEXTURE_ADDRESS_MODE_CLAMP,	//U方向上的寻址模式为CLAMP（钳位寻址模式）
+        D3D12_TEXTURE_ADDRESS_MODE_CLAMP,	//V方向上的寻址模式为CLAMP（钳位寻址模式）
+        D3D12_TEXTURE_ADDRESS_MODE_CLAMP);	//W方向上的寻址模式为CLAMP（钳位寻址模式）
+
+    //过滤器LINEAR,寻址模式WRAP的静态采样器
+    CD3DX12_STATIC_SAMPLER_DESC linearWarp(2,	//着色器寄存器
+        D3D12_FILTER_MIN_MAG_MIP_LINEAR,		//过滤器类型为LINEAR(线性插值)
+        D3D12_TEXTURE_ADDRESS_MODE_WRAP,	//U方向上的寻址模式为WRAP（重复寻址模式）
+        D3D12_TEXTURE_ADDRESS_MODE_WRAP,	//V方向上的寻址模式为WRAP（重复寻址模式）
+        D3D12_TEXTURE_ADDRESS_MODE_WRAP);	//W方向上的寻址模式为WRAP（重复寻址模式）
+
+    //过滤器LINEAR,寻址模式CLAMP的静态采样器
+    CD3DX12_STATIC_SAMPLER_DESC linearClamp(3,	//着色器寄存器
+        D3D12_FILTER_MIN_MAG_MIP_LINEAR,		//过滤器类型为LINEAR(线性插值)
+        D3D12_TEXTURE_ADDRESS_MODE_CLAMP,	//U方向上的寻址模式为CLAMP（钳位寻址模式）
+        D3D12_TEXTURE_ADDRESS_MODE_CLAMP,	//V方向上的寻址模式为CLAMP（钳位寻址模式）
+        D3D12_TEXTURE_ADDRESS_MODE_CLAMP);	//W方向上的寻址模式为CLAMP（钳位寻址模式）
+
+    //过滤器ANISOTROPIC,寻址模式WRAP的静态采样器
+    CD3DX12_STATIC_SAMPLER_DESC anisotropicWarp(4,	//着色器寄存器
+        D3D12_FILTER_ANISOTROPIC,			//过滤器类型为ANISOTROPIC(各向异性)
+        D3D12_TEXTURE_ADDRESS_MODE_WRAP,	//U方向上的寻址模式为WRAP（重复寻址模式）
+        D3D12_TEXTURE_ADDRESS_MODE_WRAP,	//V方向上的寻址模式为WRAP（重复寻址模式）
+        D3D12_TEXTURE_ADDRESS_MODE_WRAP);	//W方向上的寻址模式为WRAP（重复寻址模式）
+
+    //过滤器LINEAR,寻址模式CLAMP的静态采样器
+    CD3DX12_STATIC_SAMPLER_DESC anisotropicClamp(5,	//着色器寄存器
+        D3D12_FILTER_ANISOTROPIC,			//过滤器类型为ANISOTROPIC(各向异性)
+        D3D12_TEXTURE_ADDRESS_MODE_CLAMP,	//U方向上的寻址模式为CLAMP（钳位寻址模式）
+        D3D12_TEXTURE_ADDRESS_MODE_CLAMP,	//V方向上的寻址模式为CLAMP（钳位寻址模式）
+        D3D12_TEXTURE_ADDRESS_MODE_CLAMP);	//W方向上的寻址模式为CLAMP（钳位寻址模式）
+
+    return { pointWarp, pointClamp, linearWarp, linearClamp, anisotropicWarp, anisotropicClamp };
+}

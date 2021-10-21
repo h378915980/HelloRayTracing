@@ -63,8 +63,17 @@
     <ClCompile Include="helper\TopLevelASGenerator.cpp">
       <Filter>源文件\helper</Filter>
     </ClCompile>
-    <ClCompile Include="D3DUtility.cpp">
+    <ClCompile Include="core\D3DUtility.cpp">
       <Filter>源文件\core</Filter>
+    </ClCompile>
+    <ClCompile Include="helper\ModelLoader.cpp">
+      <Filter>源文件\helper</Filter>
+    </ClCompile>
+    <ClCompile Include="helper\TextureLoader.cpp">
+      <Filter>源文件\helper</Filter>
+    </ClCompile>
+    <ClCompile Include="helper\WICTextureLoader12.cpp">
+      <Filter>源文件\helper</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -104,8 +113,17 @@
     <ClInclude Include="helper\TopLevelASGenerator.h">
       <Filter>头文件\helper</Filter>
     </ClInclude>
-    <ClInclude Include="D3DUtility.h">
+    <ClInclude Include="core\D3DUtility.h">
       <Filter>头文件\core</Filter>
+    </ClInclude>
+    <ClInclude Include="helper\ModelLoader.h">
+      <Filter>头文件\helper</Filter>
+    </ClInclude>
+    <ClInclude Include="helper\TextureLoader.h">
+      <Filter>头文件\helper</Filter>
+    </ClInclude>
+    <ClInclude Include="helper\WICTextureLoader12.h">
+      <Filter>头文件\helper</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
