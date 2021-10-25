@@ -44,5 +44,5 @@ PSInput VSMain(float4 position : POSITION, float3 normal : NORMAL, float2 texCoo
 
 float4 PSMain(PSInput input) : SV_TARGET { 
 	
-	return gDiffuseMap.Sample(gsamLinear, input.texCoord);
+	return gDiffuseMap.SampleLevel(gsamLinear, input.texCoord,0.0);
 }

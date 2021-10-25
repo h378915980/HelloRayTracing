@@ -130,5 +130,17 @@
     <CustomBuild Include="shaders\shaders.hlsl">
       <Filter>shader</Filter>
     </CustomBuild>
+    <CustomBuild Include="shaders\Common.hlsl">
+      <Filter>shader</Filter>
+    </CustomBuild>
+    <CustomBuild Include="shaders\Hit.hlsl">
+      <Filter>shader</Filter>
+    </CustomBuild>
+    <CustomBuild Include="shaders\Miss.hlsl">
+      <Filter>shader</Filter>
+    </CustomBuild>
+    <CustomBuild Include="shaders\RayGen.hlsl">
+      <Filter>shader</Filter>
+    </CustomBuild>
   </ItemGroup>
 </Project>

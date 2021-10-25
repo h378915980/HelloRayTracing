@@ -14,6 +14,6 @@
 _Use_decl_annotations_
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)
 {
-    HelloRayTracing sample(1280, 720, L"D3D12 Raytracing - Simple Lighting");
+    HelloRayTracing sample(1920, 1080, L"Hello Ray Tracing");
     return Win32Application::Run(&sample, hInstance, nCmdShow);
 }

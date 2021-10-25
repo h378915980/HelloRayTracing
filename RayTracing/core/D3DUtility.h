@@ -89,8 +89,10 @@ struct Model
     std::string Name;
     std::string Directory;
     //mesh --- textures id :vector[0] - diffuse map, vector[1] - specular
-    std::unordered_map<std::unique_ptr<Mesh>, std::vector<UINT>> Meshes;
+    std::vector<std::pair<std::unique_ptr<Mesh>, std::vector<UINT>>> Meshes;
     std::vector<std::shared_ptr<Texture>> Textures;
+
+
 };
 
 struct Material

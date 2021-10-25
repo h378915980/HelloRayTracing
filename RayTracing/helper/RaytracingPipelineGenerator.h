@@ -119,6 +119,9 @@ public:
   /// algorithms must be flattened to a loop in the ray generation program for best performance.
   void SetMaxRecursionDepth(UINT maxDepth);
 
+  ///hpy:add global root signature to ray tracing pipline
+  void AddGlobalRootSignature(ID3D12RootSignature* globalRootSignature);
+
   /// Compiles the raytracing state object
   ID3D12StateObject* Generate();
 
@@ -191,7 +194,7 @@ private:
   ID3D12RootSignature* m_dummyLocalRootSignature;
   ID3D12RootSignature* m_dummyGlobalRootSignature;
 
-  
+  ID3D12RootSignature* m_globalRootSignature = nullptr;
 };
 
 } // namespace nv_helpers_dx12

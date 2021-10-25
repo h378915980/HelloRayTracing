@@ -29,11 +29,18 @@ void HelloRayTracing::OnInit()
     nv_helpers_dx12::CameraManip.setLookat(glm::vec3(1.5f, 1.5f, 1.5f), glm::vec3(0, 0, 0), glm::vec3(0, 1, 0));
 
     Initialize();
+    CheckRaytracingSupport();
+
     CreateDescriptorHeap();
     LoadAssets();
-
     LoadRasterPipeline();
     CreateCameraBuffer();
+
+    CreateAccelerationStructures();
+    CreateRaytracingPipeline();
+    CreateRayTracingResource();
+    CreateShaderBindingTable();
+
 
     ThrowIfFailed(m_commandList->Close());
     ID3D12CommandList* cmdsLists[] = { m_commandList.Get() };
@@ -91,7 +98,6 @@ void HelloRayTracing::OnRender()
         //m_commandList->IASetIndexBuffer(&indexBufferView);
         //m_commandList->DrawIndexedInstanced(m_meshes["tet"]->IndexCount, 1, 0, 0, 0);
 
-
         for (auto& mesh : m_sceneModel.Meshes) {
             if (!mesh.second.empty()) {
                 CD3DX12_GPU_DESCRIPTOR_HANDLE srvTexHandle = CD3DX12_GPU_DESCRIPTOR_HANDLE(m_srvTexHeap->GetGPUDescriptorHandleForHeapStart());
@@ -106,27 +112,63 @@ void HelloRayTracing::OnRender()
             m_commandList->DrawIndexedInstanced(mesh.first->IndexCount, 1, 0, 0, 0);
         }
 
-
     }
     else { //DXR continue
+        std::vector<ID3D12DescriptorHeap*> heaps = { m_rtSrvUavHeap.Get() };
+        m_commandList->SetDescriptorHeaps(static_cast<UINT>(heaps.size()),heaps.data());
 
+        CD3DX12_RESOURCE_BARRIER transition = CD3DX12_RESOURCE_BARRIER::Transition(
+            m_outputResource.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE,D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+        m_commandList->ResourceBarrier(1, &transition);
+
+        // Setup the raytracing task
+        D3D12_DISPATCH_RAYS_DESC desc = {};
+        // The ray generation shaders are always at the beginning of the SBT.
+        uint32_t rayGenerationSectionSizeInBytes = m_sbtHelper.GetRayGenSectionSize();
+        desc.RayGenerationShaderRecord.StartAddress = m_sbtStorage->GetGPUVirtualAddress();
+        desc.RayGenerationShaderRecord.SizeInBytes = rayGenerationSectionSizeInBytes;
+        // The miss shaders are in the second SBT section
+        uint32_t missSectionSizeInBytes = m_sbtHelper.GetMissSectionSize();
+        desc.MissShaderTable.StartAddress = m_sbtStorage->GetGPUVirtualAddress() + rayGenerationSectionSizeInBytes;
+        desc.MissShaderTable.SizeInBytes = missSectionSizeInBytes;
+        desc.MissShaderTable.StrideInBytes = m_sbtHelper.GetMissEntrySize();
+        // The hit groups section start after the miss shaders.
+        uint32_t hitGroupsSectionSize = m_sbtHelper.GetHitGroupSectionSize();
+        desc.HitGroupTable.StartAddress = m_sbtStorage->GetGPUVirtualAddress() +rayGenerationSectionSizeInBytes +missSectionSizeInBytes;
+        desc.HitGroupTable.SizeInBytes = hitGroupsSectionSize;
+        desc.HitGroupTable.StrideInBytes = m_sbtHelper.GetHitGroupEntrySize();
+        // Dimensions of the image to render, identical to a kernel launch dimension
+        desc.Width = GetWidth();
+        desc.Height = GetHeight();
+        desc.Depth = 1;
+
+
+        // Bind the raytracing pipeline
+        m_commandList->SetPipelineState1(m_rtStateObject.Get());
+        m_commandList->SetComputeRootSignature(m_rtGlobalSignature.Get());
+        m_commandList->DispatchRays(&desc);
+
+        transition = CD3DX12_RESOURCE_BARRIER::Transition(m_outputResource.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS,D3D12_RESOURCE_STATE_COPY_SOURCE);
+        m_commandList->ResourceBarrier(1, &transition);
+        transition = CD3DX12_RESOURCE_BARRIER::Transition(m_renderTargets[m_frameIndex].Get(), D3D12_RESOURCE_STATE_RENDER_TARGET,D3D12_RESOURCE_STATE_COPY_DEST);
+        m_commandList->ResourceBarrier(1, &transition);
+
+        m_commandList->CopyResource(m_renderTargets[m_frameIndex].Get(),m_outputResource.Get());
+
+        transition = CD3DX12_RESOURCE_BARRIER::Transition(m_renderTargets[m_frameIndex].Get(), D3D12_RESOURCE_STATE_COPY_DEST,D3D12_RESOURCE_STATE_RENDER_TARGET);
+        m_commandList->ResourceBarrier(1, &transition);
     }
 
-    transition = CD3DX12_RESOURCE_BARRIER::Transition(
-        m_renderTargets[m_frameIndex].Get(),
-        D3D12_RESOURCE_STATE_RENDER_TARGET,
-        D3D12_RESOURCE_STATE_PRESENT);
+    transition = CD3DX12_RESOURCE_BARRIER::Transition(m_renderTargets[m_frameIndex].Get(),
+        D3D12_RESOURCE_STATE_RENDER_TARGET,D3D12_RESOURCE_STATE_PRESENT);
     m_commandList->ResourceBarrier(1, &transition);
 
     ThrowIfFailed(m_commandList->Close());
-
-    // Execute the command list.
     ID3D12CommandList* ppCommandLists[] = { m_commandList.Get() };
     m_commandQueue->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
 
     // Present the frame.
     ThrowIfFailed(m_swapChain->Present(1, 0));
-
     WaitForPreviousFrame();
 }
 
@@ -158,6 +200,13 @@ void HelloRayTracing::OnMouseMove(UINT8 wParam, UINT32 lParam)
 
     CameraManip.mouseMove(-GET_X_LPARAM(lParam), -GET_Y_LPARAM(lParam), inputs);
    
+}
+
+void HelloRayTracing::OnKeyUp(UINT8 key)
+{
+    if (key == VK_SPACE) {
+        m_raster = !m_raster;
+    }
 }
 
 void HelloRayTracing::Initialize()
@@ -293,8 +342,8 @@ void HelloRayTracing::LoadAssets()
 
         Vertex_Model triangleVertices[] = {
             {{std::sqrtf(8.f / 9.f), 0.f, -1.f / 3.f}, {1.f, 0.f, 0.f},{0.0,0.0}},
-            {{-std::sqrtf(2.f / 9.f), std::sqrtf(2.f / 3.f), -1.f / 3.f}, {1.f, 0.f, 0.f},{1.0,0.0}},
-            {{-std::sqrtf(2.f / 9.f), -std::sqrtf(2.f / 3.f), -1.f / 3.f}, {1.f, 0.f, 0.f},{0.0,1.0}},
+            {{-std::sqrtf(2.f / 9.f), std::sqrtf(2.f / 3.f), -1.f / 3.f}, {0.f, 1.f, 0.f},{1.0,0.0}},
+            {{-std::sqrtf(2.f / 9.f), -std::sqrtf(2.f / 3.f), -1.f / 3.f}, {0.f, 0.f, 1.f},{0.0,1.0}},
             {{0.f, 0.f, 1.f}, {1.f, 0.f, 0.f},{1.0,1.0}}
         };
         const UINT vertexBufferSize = sizeof(triangleVertices);
@@ -465,6 +514,241 @@ void HelloRayTracing::UpdateCameraBuffer()
 
 
 }
+
+void HelloRayTracing::CheckRaytracingSupport()
+{
+    D3D12_FEATURE_DATA_D3D12_OPTIONS5 options5 = {};
+    ThrowIfFailed(m_device->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS5,
+        &options5, sizeof(options5)));
+    if (options5.RaytracingTier < D3D12_RAYTRACING_TIER_1_0)
+        throw std::runtime_error("Raytracing not supported on device");
+}
+
+HelloRayTracing::AccelerationStructureBuffers
+HelloRayTracing::CreateBottomLevelAS(
+    std::vector<std::pair<ComPtr<ID3D12Resource>, uint32_t>> vVertexBuffers, 
+    std::vector<std::pair<ComPtr<ID3D12Resource>, uint32_t>> vIndexBuffers)
+{
+    nv_helpers_dx12::BottomLevelASGenerator bottomLevelAS;
+    // Adding all vertex buffers and not transforming their position.
+    for (size_t i = 0; i < vVertexBuffers.size(); i++) {
+        if (i < vIndexBuffers.size() && vIndexBuffers[i].second > 0)
+            bottomLevelAS.AddVertexBuffer(
+                vVertexBuffers[i].first.Get(), 0,vVertexBuffers[i].second, sizeof(Vertex_Model),
+                vIndexBuffers[i].first.Get(), 0,vIndexBuffers[i].second, nullptr, 0, true);
+        else
+            bottomLevelAS.AddVertexBuffer(vVertexBuffers[i].first.Get(), 0, vVertexBuffers[i].second, sizeof(Vertex_Model), 0, 0);
+    }
+
+    UINT64 scratchSizeInBytes = 0;
+    UINT64 resultSizeInBytes = 0;
+
+    bottomLevelAS.ComputeASBufferSizes(m_device.Get(), false, &scratchSizeInBytes, &resultSizeInBytes);
+
+    AccelerationStructureBuffers buffers;
+    buffers.pScratch = helper::CreateBuffer(m_device.Get(), scratchSizeInBytes,
+        D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COMMON,helper::kDefaultHeapProps);
+    buffers.pResult = helper::CreateBuffer(m_device.Get(), resultSizeInBytes,
+        D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE,helper::kDefaultHeapProps);
+
+    bottomLevelAS.Generate(m_commandList.Get(), buffers.pScratch.Get(), buffers.pResult.Get(), false, nullptr);
+
+    return buffers;
+}
+
+void HelloRayTracing::CreateTopLevelAS(const std::vector<std::pair<ComPtr<ID3D12Resource>, DirectX::XMMATRIX>>& instances)
+{
+    // Gather all the instances into the builder helper
+    for (size_t i = 0; i < instances.size(); i++) {
+        m_topLevelASGenerator.AddInstance(instances[i].first.Get(),
+            instances[i].second, static_cast<UINT>(i),static_cast<UINT>(i));
+    }
+
+    UINT64 scratchSize, resultSize, instanceDescsSize;
+    m_topLevelASGenerator.ComputeASBufferSizes(m_device.Get(), true, &scratchSize, &resultSize, &instanceDescsSize);
+
+    m_topLevelASBuffers.pScratch = helper::CreateBuffer(m_device.Get(), scratchSize, 
+        D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,D3D12_RESOURCE_STATE_UNORDERED_ACCESS,helper::kDefaultHeapProps);
+    m_topLevelASBuffers.pResult = helper::CreateBuffer(m_device.Get(), resultSize, 
+        D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE,helper::kDefaultHeapProps);
+    m_topLevelASBuffers.pInstanceDesc = helper::CreateBuffer(m_device.Get(), instanceDescsSize, 
+        D3D12_RESOURCE_FLAG_NONE,D3D12_RESOURCE_STATE_GENERIC_READ, helper::kUploadHeapProps);
+
+    m_topLevelASGenerator.Generate(m_commandList.Get(),m_topLevelASBuffers.pScratch.Get(),
+        m_topLevelASBuffers.pResult.Get(), m_topLevelASBuffers.pInstanceDesc.Get());
+}
+
+void HelloRayTracing::CreateAccelerationStructures()
+{
+    // Build the bottom AS from the Triangle vertex buffer
+    UINT meshCount = m_sceneModel.Meshes.size();
+    std::vector<AccelerationStructureBuffers> bottomLevelBuffers(meshCount);
+    for (int i = 0; i < meshCount;++i) {
+        AccelerationStructureBuffers bottomLevelBuffers = CreateBottomLevelAS(
+            { {m_sceneModel.Meshes[i].first->VertexBufferGPU.Get(),m_sceneModel.Meshes[i].first->VertexCount} },
+            { {m_sceneModel.Meshes[i].first->IndexBufferGPU.Get(),m_sceneModel.Meshes[i].first->IndexCount} }
+           );
+        m_instances.push_back({ bottomLevelBuffers.pResult,DirectX::XMMatrixScaling(0.1, 0.1, 0.1) });
+    }
+
+    CreateTopLevelAS(m_instances);
+
+    // Store the AS buffers. The rest of the buffers will be released once we exit the function
+    //m_bottomLevelAS = bottomLevelBuffers.pResult;
+
+}
+
+HelloRayTracing::RayTracingShaderLibrary 
+HelloRayTracing::CreateRayTracingShaderLibrary(std::string name, LPCWSTR shadername, 
+    std::vector<std::wstring> exportSymbols, ComPtr<ID3D12RootSignature> signature)
+{
+    HelloRayTracing::RayTracingShaderLibrary rtsl;
+    rtsl.name = name;
+    rtsl.library = helper::CompileShaderLibrary(shadername);
+    rtsl.exportSymbols = exportSymbols;
+    rtsl.signature = signature;
+    return rtsl;
+}
+
+void HelloRayTracing::CreateRaytracingPipeline()
+{
+    nv_helpers_dx12::RayTracingPipelineGenerator pipeline(m_device.Get());
+
+    //create global signature
+    auto staticSamplers = GetStaticSamplers();
+    CD3DX12_ROOT_SIGNATURE_DESC rootSignatureDesc;
+    rootSignatureDesc.Init(0,nullptr, (UINT)staticSamplers.size(), staticSamplers.data(), D3D12_ROOT_SIGNATURE_FLAG_NONE);
+    ComPtr<ID3DBlob> signature;
+    ComPtr<ID3DBlob> error;
+    ThrowIfFailed(D3D12SerializeRootSignature(&rootSignatureDesc, D3D_ROOT_SIGNATURE_VERSION_1, &signature, &error));
+    ThrowIfFailed(m_device->CreateRootSignature(0, signature->GetBufferPointer(), signature->GetBufferSize(),IID_PPV_ARGS(&m_rtGlobalSignature)));
+    pipeline.AddGlobalRootSignature(m_rtGlobalSignature.Get());
+
+    //create loacl signature
+    nv_helpers_dx12::RootSignatureGenerator raygenRSG;
+    raygenRSG.AddHeapRangesParameter({
+            {0,1,0,D3D12_DESCRIPTOR_RANGE_TYPE_UAV,0 },
+            {0,1,0,D3D12_DESCRIPTOR_RANGE_TYPE_SRV,1 },
+            {0,1,0,D3D12_DESCRIPTOR_RANGE_TYPE_CBV,2 }
+        });
+
+    m_rtShaderLibrary.push_back(CreateRayTracingShaderLibrary(
+        "MyFirstRayGen",L"shaders/RayGen.hlsl", { L"RayGen" }, raygenRSG.Generate(m_device.Get(),true)));
+
+    nv_helpers_dx12::RootSignatureGenerator missRSG;
+    m_rtShaderLibrary.push_back(CreateRayTracingShaderLibrary(
+        "MyFirstMiss", L"shaders/Miss.hlsl", { L"Miss" }, missRSG.Generate(m_device.Get(), true)));
+
+    nv_helpers_dx12::RootSignatureGenerator hitRSG;
+    hitRSG.AddRootParameter(D3D12_ROOT_PARAMETER_TYPE_SRV, 0); // vertex
+    hitRSG.AddRootParameter(D3D12_ROOT_PARAMETER_TYPE_SRV, 1); // indices
+    hitRSG.AddHeapRangesParameter({                            //texture
+            {2,1,0,D3D12_DESCRIPTOR_RANGE_TYPE_SRV,0 }
+        });
+
+    m_rtShaderLibrary.push_back(CreateRayTracingShaderLibrary(
+        "MyFirstHit", L"shaders/Hit.hlsl", { L"ClosestHit" }, hitRSG.Generate(m_device.Get(), true)));
+
+    for (auto& lib : m_rtShaderLibrary) {
+        pipeline.AddLibrary(lib.library.Get(), lib.exportSymbols);
+    }
+
+    pipeline.AddHitGroup(L"HitGroup", L"ClosestHit");
+    pipeline.AddRootSignatureAssociation(m_rtShaderLibrary[0].signature.Get(), { L"RayGen" });
+    pipeline.AddRootSignatureAssociation(m_rtShaderLibrary[1].signature.Get(), { L"Miss" });
+    pipeline.AddRootSignatureAssociation(m_rtShaderLibrary[2].signature.Get(), { L"HitGroup" });
+
+
+    pipeline.SetMaxPayloadSize(4 * sizeof(float)); // RGB + distance
+    pipeline.SetMaxAttributeSize(2 * sizeof(float)); // barycentric coordinates
+    pipeline.SetMaxRecursionDepth(1);
+    m_rtStateObject = pipeline.Generate();
+    ThrowIfFailed(m_rtStateObject->QueryInterface(IID_PPV_ARGS(&m_rtStateObjectProps)));
+}
+
+void HelloRayTracing::CreateRayTracingResource()
+{
+    //create output buffer
+    {
+        D3D12_RESOURCE_DESC resDesc = {};
+        resDesc.DepthOrArraySize = 1;
+        resDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+        resDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+        resDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
+        resDesc.Width = GetWidth();
+        resDesc.Height = GetHeight();
+        resDesc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+        resDesc.MipLevels = 1;
+        resDesc.SampleDesc.Count = 1;
+        ThrowIfFailed(m_device->CreateCommittedResource(&helper::kDefaultHeapProps, D3D12_HEAP_FLAG_NONE, &resDesc,
+            D3D12_RESOURCE_STATE_COPY_SOURCE, nullptr, IID_PPV_ARGS(&m_outputResource)));
+    }
+
+    //create shader resource heap
+    {
+        m_rtSrvUavHeap = helper::CreateDescriptorHeap(m_device.Get(), 3, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, true);
+        D3D12_CPU_DESCRIPTOR_HANDLE srvHandle =m_rtSrvUavHeap->GetCPUDescriptorHandleForHeapStart();
+
+        D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc = {};
+        uavDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
+        m_device->CreateUnorderedAccessView(m_outputResource.Get(), nullptr, &uavDesc,srvHandle);
+
+        srvHandle.ptr += m_cbvSrvUavDescriptorSize;
+        D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc;
+        srvDesc.Format = DXGI_FORMAT_UNKNOWN;
+        srvDesc.ViewDimension = D3D12_SRV_DIMENSION_RAYTRACING_ACCELERATION_STRUCTURE;
+        srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+        srvDesc.RaytracingAccelerationStructure.Location = m_topLevelASBuffers.pResult->GetGPUVirtualAddress();
+        m_device->CreateShaderResourceView(nullptr, &srvDesc, srvHandle);
+
+        srvHandle.ptr += m_cbvSrvUavDescriptorSize;
+        D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc = {};
+        cbvDesc.BufferLocation = m_cameraBuffer->GetGPUVirtualAddress();
+        cbvDesc.SizeInBytes = m_cameraBufferSize;
+        m_device->CreateConstantBufferView(&cbvDesc, srvHandle);
+    }
+}
+
+void HelloRayTracing::CreateShaderBindingTable()
+{
+    m_sbtHelper.Reset();
+    D3D12_GPU_DESCRIPTOR_HANDLE srvUavHeapHandle = m_rtSrvUavHeap->GetGPUDescriptorHandleForHeapStart();
+
+    auto heapPointer = reinterpret_cast<UINT64*>(srvUavHeapHandle.ptr);
+    m_sbtHelper.AddRayGenerationProgram(L"RayGen", {heapPointer});
+    m_sbtHelper.AddMissProgram(L"Miss", {});
+    m_sbtHelper.AddMissProgram(L"Miss", {});
+
+    for (int i = 0; i < m_sceneModel.Meshes.size();++i) {
+        if (!m_sceneModel.Meshes[i].second.empty()) {      
+            CD3DX12_GPU_DESCRIPTOR_HANDLE srvTexHandle = CD3DX12_GPU_DESCRIPTOR_HANDLE(m_srvTexHeap->GetGPUDescriptorHandleForHeapStart());
+            srvTexHandle.Offset(m_sceneModel.Textures[m_sceneModel.Meshes[i].second[0]]->SrvHeapIndex, m_cbvSrvUavDescriptorSize);
+            auto texheapPointer = reinterpret_cast<UINT64*>(srvTexHandle.ptr);
+            m_sbtHelper.AddHitGroup(L"HitGroup", {
+                    (void*)(m_sceneModel.Meshes[i].first->VertexBufferGPU->GetGPUVirtualAddress()),
+                    (void*)(m_sceneModel.Meshes[i].first->IndexBufferGPU->GetGPUVirtualAddress()),
+                    texheapPointer
+                });
+        }
+        else {
+            m_sbtHelper.AddHitGroup(L"HitGroup", {
+                    (void*)(m_sceneModel.Meshes[i].first->VertexBufferGPU->GetGPUVirtualAddress()),
+                    (void*)(m_sceneModel.Meshes[i].first->IndexBufferGPU->GetGPUVirtualAddress())
+                });
+        }
+    }
+
+    uint32_t sbtSize = m_sbtHelper.ComputeSBTSize();
+    m_sbtStorage = helper::CreateBuffer(m_device.Get(), sbtSize, D3D12_RESOURCE_FLAG_NONE,
+        D3D12_RESOURCE_STATE_GENERIC_READ, helper::kUploadHeapProps);
+
+    if (!m_sbtStorage) {
+        throw std::logic_error("Could not allocate the shader binding table");
+    }
+
+    m_sbtHelper.Generate(m_sbtStorage.Get(), m_rtStateObjectProps.Get());
+}
+
 
 std::array<CD3DX12_STATIC_SAMPLER_DESC, 6> HelloRayTracing::GetStaticSamplers()
 {

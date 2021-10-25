@@ -124,7 +124,8 @@ bool ModelLoader::ProcessMesh(aiMesh* ai_mesh, const aiScene* ai_scene, Model& m
 		}
 
 	}
-	model.Meshes[std::move(mesh)] = indexInModelTextures;
+	//model.Meshes[std::move(mesh)] = indexInModelTextures;
+	model.Meshes.push_back({ std::move(mesh),indexInModelTextures });
 
 	return true;
 }

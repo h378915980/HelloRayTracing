@@ -4,6 +4,9 @@
 #include <vector>
 #include "core/D3DUtility.h"
 #include "helper/TextureLoader.h"
+#include "helper/TopLevelASGenerator.h"
+#include "helper/ShaderBindingTableGenerator.h"
+
 using Microsoft::WRL::ComPtr;
 
 class HelloRayTracing : public DXSample
@@ -19,7 +22,7 @@ public:
 	virtual void OnButtonDown(UINT32 lParam);
 	virtual void OnMouseMove(UINT8 wParam, UINT32 lParam);
 	virtual void OnKeyDown(UINT8) {}
-	virtual void OnKeyUp(UINT8) {}
+	virtual void OnKeyUp(UINT8);
 
 private:
 	//common base
@@ -75,11 +78,55 @@ private:
 
 	//
 	bool m_raster = true;
+	void CheckRaytracingSupport();
 
-	//DXR Pipeline objects
+	//DXR  objects
+	struct AccelerationStructureBuffers {
+		ComPtr<ID3D12Resource> pScratch;      // Scratch memory for AS builder
+		ComPtr<ID3D12Resource> pResult;       // Where the AS is
+		ComPtr<ID3D12Resource> pInstanceDesc; // Hold the matrices of the instances
+	};
+
+	ComPtr<ID3D12Resource>					m_bottomLevelAS; 
+	nv_helpers_dx12::TopLevelASGenerator	m_topLevelASGenerator;
+	AccelerationStructureBuffers			m_topLevelASBuffers;
+	std::vector<std::pair<ComPtr<ID3D12Resource>, DirectX::XMMATRIX>> m_instances;
+
+	AccelerationStructureBuffers CreateBottomLevelAS(
+		std::vector<std::pair<ComPtr<ID3D12Resource>, uint32_t>> vVertexBuffers,
+		std::vector<std::pair<ComPtr<ID3D12Resource>, uint32_t>> vIndexBuffers = {});
+	void CreateTopLevelAS(const std::vector<std::pair<ComPtr<ID3D12Resource>, DirectX::XMMATRIX>>& instances);
+	void CreateAccelerationStructures();
 
 
+	//dxr signature
+	ComPtr<ID3D12RootSignature> m_rtGlobalSignature;
+	struct RayTracingShaderLibrary {
+		std::string					name; //user define
+		ComPtr<IDxcBlob>			library;
+		std::vector<std::wstring>	exportSymbols;
+		ComPtr<ID3D12RootSignature> signature;   //local signature for each raytracing shader
+	};
+	std::vector<RayTracingShaderLibrary> m_rtShaderLibrary;
+	RayTracingShaderLibrary CreateRayTracingShaderLibrary(std::string name, LPCWSTR shadername,
+		std::vector<std::wstring> exportSymbols, ComPtr<ID3D12RootSignature> signature);
 
+	// Ray tracing pipeline state
+	ComPtr<ID3D12StateObject>			m_rtStateObject;
+	ComPtr<ID3D12StateObjectProperties> m_rtStateObjectProps;
+	void CreateRaytracingPipeline();
+
+	//SBT
+	ComPtr<ID3D12Resource>				m_outputResource;
+	ComPtr<ID3D12DescriptorHeap>		m_rtSrvUavHeap;
+	nv_helpers_dx12::ShaderBindingTableGenerator	m_sbtHelper;
+	ComPtr<ID3D12Resource>							m_sbtStorage;
+	void CreateRayTracingResource();
+	void CreateShaderBindingTable();
+
+
+private:
 	std::array<CD3DX12_STATIC_SAMPLER_DESC, 6> GetStaticSamplers();
+
 };
 
